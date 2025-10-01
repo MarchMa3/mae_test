@@ -456,7 +456,7 @@ class MAE(nn.Module):
         missing_mask: torch.Tensor
     ) -> torch.Tensor:
         """
-        Compute reconstruction loss on masked positions only
+        Compute MSE loss on masked positions only
         
         Args:
             target: (B, L, input_dim) original features
@@ -465,7 +465,7 @@ class MAE(nn.Module):
             missing_mask: (B, L) - 1=observed, 0=originally missing
         
         Returns:
-            loss: cosine similarity loss on masked positions
+            loss: MSE
         """
         valid_mask = (mask * missing_mask) > 0.5  # (B, L) boolean
     
