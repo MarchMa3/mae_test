@@ -219,7 +219,9 @@ class MAE(nn.Module):
         ])
         self.decoder_norm = nn.LayerNorm(decoder_embed_dim)
         # Reconstruction head
-        self.decoder_pred = nn.Linear(decoder_embed_dim, input_dim, bias=False)
+        self.decoder_pred = nn.Linear(decoder_embed_dim, input_dim, bias=True)
+        torch.nn.init.xavier_uniform_(self.decoder_pred.weight, gain=0.01)
+        torch.nn.init.zeros_(self.decoder_pred.bias) 
 
         # Weight initialization
         self.apply(init_weights)
@@ -300,9 +302,6 @@ class MAE(nn.Module):
         mask = torch.gather(mask, dim=1, index=ids_restore)  # restore to original order
         nask = torch.ones([N, L], device=x.device) - mask  # inverse mask
         
-        if self.training:
-            mask[m < eps] = 0  # originally missing values marked as 0
-        
         # Create attention mask for variable-length sequences
         attn_mask = torch.zeros(N, max_len_keep, device=x.device)
         for i in range(N):
@@ -331,10 +330,10 @@ class MAE(nn.Module):
             ids_restore: (B, L) restore indices
             attn_mask: (B, max_len_keep+1) attention mask for encoder
         """
-        B, L, _ = embeddings.shape
+        B, L, _ = features.shape
         
         # Project to encoder dimension
-        x = self.input_proj(features)  # (B, L, encoder_embed_dim)
+        x = self.patch_embed(features)  # (B, L, encoder_embed_dim)
         
         # Add positional embeddings
         if self.use_cls_token:
@@ -468,14 +467,17 @@ class MAE(nn.Module):
         Returns:
             loss: cosine similarity loss on masked positions
         """
-        pred_norm = torch.nn.functional.normalize(pred, dim=-1)
-        target_norm = torch.nn.functional.normalize(target, dim=-1)
+        valid_mask = (mask * missing_mask) > 0.5  # (B, L) boolean
+    
+        if valid_mask.sum() == 0:
+            return torch.tensor(0.0, device=target.device)
         
-        # 1 - cosine similarity
-        cosine_loss = 1 - (pred_norm * target_norm).sum(dim=-1)
+        loss = torch.nn.functional.mse_loss(
+            pred[valid_mask], 
+            target[valid_mask],
+            reduction='mean'
+        )
         
-        valid_mask = mask * missing_mask
-        loss = (cosine_loss * valid_mask).sum() / (valid_mask.sum() + eps)
         return loss
 
     def forward(
@@ -556,8 +558,8 @@ class MAE(nn.Module):
         )
         pred = self.forward_decoder(latent, ids_restore, attn_mask)
         return pred, mask
-    
 
+    
 def mae_small(**kwargs):
     """Small MAE model for quick experiments"""
     if 'input_dim' not in kwargs or 'seq_len' not in kwargs:
