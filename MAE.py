@@ -127,7 +127,8 @@ class MAE(nn.Module):
     def __init__(
         self,
         seq_len: int,
-        input_dim: int,
+        vocab_size: int,
+        input_dim: int=64,
         encoder_embed_dim: int=768,
         decoder_embed_dim: int=512,
         encoder_depth: int=12,
@@ -142,6 +143,7 @@ class MAE(nn.Module):
     ):
         super().__init__()
         self.seq_len = seq_len
+        self.vocab_size = vocab_size
         self.input_dim = input_dim
         self.encoder_embed_dim = encoder_embed_dim
         self.decoder_embed_dim = decoder_embed_dim
@@ -150,6 +152,10 @@ class MAE(nn.Module):
         self.use_cls_token = use_cls_token
         self.mask_ratio = mask_ratio
         self.exclude_columns = exclude_columns
+
+        # tokens to embeddings
+        self.token_embedding = nn.Embedding(vocab_size, input_dim)
+        self.value_projection = nn.Linear(1, input_dim)
 
         # Patch layer
         self.patch_embed = nn.Sequential(
@@ -226,6 +232,38 @@ class MAE(nn.Module):
         # Weight initialization
         self.apply(init_weights)
     
+    def embed_tokens(
+        self,
+        tokens: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Convert raw tokens to (B, L, input_dim) embeddings
+
+        Args:
+            tokens: (B, L) 
+        Return:
+            embeddings: (B, L, input_dim)
+        """
+        B, L = tokens.shape
+        embeddings = torch.zeros(B, L, self.input_dim, device=tokens.device)
+
+        # CLS tokens
+        embeddings[:, 0] = self.token_embedding(tokens[:, 0].long())
+
+        # Loinc code 
+        lab_pos = torch.arange(1, L, 2, device=tokens.device)
+        if len(lab_pos) > 0:
+            embeddings[:, lab_pos] = self.token_embedding(tokens[:, lab_pos].long())
+        
+        # Value
+        value_pos = torch.arange(2, L, 2, device=tokens.device)
+        if len(value_pos) > 0:
+            embeddings[:, value_pos] = self.value_projection(
+                tokens[:, value_pos].unsqueeze(-1)
+            )
+        
+        return embeddings # (B, L, input_dim)
+
     def random_masking(
         self,
         x: torch.Tensor,
@@ -252,14 +290,8 @@ class MAE(nn.Module):
         """
         N, L, D = x.shape  # batch, length, dim
         
-        # Calculate how many tokens to keep per sample
-        if self.training:
-            # During training: mask a ratio of observed values
-            effective_lengths = (m > eps).sum(dim=1).float()  # count observed tokens
-            len_keep = torch.ceil(effective_lengths * (1 - mask_ratio)).long()
-        else:
-            # During inference: keep all observed values (no masking)
-            len_keep = torch.ceil(torch.sum(m, dim=1)).long()
+        effective_lengths = (m > eps).sum(dim=1).float()
+        len_keep = torch.ceil(effective_lengths * (1 - mask_ratio)).long()
         
         # Generate random noise for shuffling
         noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
@@ -311,7 +343,7 @@ class MAE(nn.Module):
     
     def forward_encoder(
         self,
-        features: torch.Tensor,
+        tokens: torch.Tensor,
         missing_mask: torch.Tensor,
         mask_ratio: float
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -330,7 +362,9 @@ class MAE(nn.Module):
             ids_restore: (B, L) restore indices
             attn_mask: (B, max_len_keep+1) attention mask for encoder
         """
-        B, L, _ = features.shape
+        B, L= tokens.shape
+        # Tokens -> embeddings
+        features = self.embed_tokens(tokens) # (B, L, input_dim)
         
         # Project to encoder dimension
         x = self.patch_embed(features)  # (B, L, encoder_embed_dim)
@@ -450,7 +484,7 @@ class MAE(nn.Module):
     
     def forward_loss(
         self,
-        target: torch.Tensor,
+        tokens: torch.Tensor,
         pred: torch.Tensor,
         mask: torch.Tensor,
         missing_mask: torch.Tensor
@@ -467,10 +501,12 @@ class MAE(nn.Module):
         Returns:
             loss: MSE
         """
-        valid_mask = (mask * missing_mask) > 0.5  # (B, L) boolean
-    
+        with torch.no_grad():
+            target = self.embed_tokens(tokens)  # (B, L, input_dim)
+            valid_mask = (mask * missing_mask) > 0.5
+        
         if valid_mask.sum() == 0:
-            return torch.tensor(0.0, device=target.device)
+            return torch.tensor(0.0, device=tokens.device)
         
         loss = torch.nn.functional.mse_loss(
             pred[valid_mask], 
@@ -482,7 +518,7 @@ class MAE(nn.Module):
 
     def forward(
         self,
-        features: torch.Tensor,
+        tokens: torch.Tensor,
         missing_mask: torch.Tensor,
         mask_ratio: Optional[float] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -490,7 +526,7 @@ class MAE(nn.Module):
         Forward pass
 
         Args:
-            features: (B, L, input_dim) raw input features
+            tokens: (B, L) raw token sequence
             missing_mask: (B, L) from data
             mask_ratio: masking ratio
 
@@ -504,14 +540,14 @@ class MAE(nn.Module):
         
         # Encoder: embed and mask
         latent, mask, nask, ids_restore, attn_mask = self.forward_encoder(
-            features, missing_mask, mask_ratio
+            tokens, missing_mask, mask_ratio
         )
 
         # Decoder: reconstruct
         pred = self.forward_decoder(latent, ids_restore, attn_mask)
 
         # Loss
-        loss = self.forward_loss(features, pred, mask, missing_mask)
+        loss = self.forward_loss(tokens, pred, mask, missing_mask)
 
         return loss, pred, mask
 
