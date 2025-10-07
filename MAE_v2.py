@@ -1,6 +1,8 @@
 """
-Tokenization includes 2 tokens for 1 lab test.
-token seq: [CLS, lab1, val1, lab2, val2, ...]
+Tokenization includes 1 tokens for 1 lab test (seperately).
+Sequence format: [CLS, test1, test2, test3, ...]
+  - loinc_tokens: [CLS, loinc1, loinc2, ...]
+  - value_tokens: [0.0, value1, value2, ...]
 """
 import torch
 import torch.nn as nn
@@ -117,8 +119,7 @@ class MAE(nn.Module):
     Masked Autoencoder for pre-computed lab embeddings
     
     Args:
-        seq_len: Sequence length from HDF5 data
-        hdf5_embed_dim: Embedding dimension from HDF5 final_tokens
+        seq_len: Sequence length 
         encoder_embed_dim: Encoder hidden dimension
         decoder_embed_dim: Decoder hidden dimension
         encoder_depth: Number of encoder layers
@@ -238,35 +239,30 @@ class MAE(nn.Module):
     
     def embed_tokens(
         self,
-        tokens: torch.Tensor
+        loinc_tokens: torch.Tensor,
+        value_tokens: torch.Tensor
     ) -> torch.Tensor:
         """
-        Convert raw tokens to (B, L, input_dim) embeddings
-
+        Deal with loinc and value tokens seperately.
         Args:
-            tokens: (B, L) 
-        Return:
-            embeddings: (B, L, input_dim)
+            loinc_tokens: (B, N), CLS + loinc codes
+            value_tokens: (B, N), lab test values
+        
+        Returns:
+            embeddings: (B, N, input_dim)
         """
-        B, L = tokens.shape
-        embeddings = torch.zeros(B, L, self.input_dim, device=tokens.device)
+        B, N = loinc_tokens.shape
 
-        # CLS tokens
-        embeddings[:, 0] = self.token_embedding(tokens[:, 0].long())
+        # loinc code embedding
+        loinc_emb = self.token_embedding(loinc_tokens.long())
 
-        # Loinc code 
-        lab_pos = torch.arange(1, L, 2, device=tokens.device)
-        if len(lab_pos) > 0:
-            embeddings[:, lab_pos] = self.token_embedding(tokens[:, lab_pos].long())
-        
-        # Value
-        value_pos = torch.arange(2, L, 2, device=tokens.device)
-        if len(value_pos) > 0:
-            embeddings[:, value_pos] = self.value_projection(
-                tokens[:, value_pos].unsqueeze(-1)
-            )
-        
-        return embeddings # (B, L, input_dim)
+        # value embedding
+        value_emb = self.value_projection(value_tokens.unsqueeze(-1))
+
+        embeddings = loinc_emb + value_emb
+        embeddings[:, 0, :] = loinc_emb[:, 0, :]
+
+        return embeddings
 
     def random_masking(
         self,
@@ -292,7 +288,7 @@ class MAE(nn.Module):
             ids_restore: [N, L], indices to restore original order
             attn_mask: [N, max_len_keep], attention mask for encoder (1=valid, 0=padding)
         """
-        N, L, D = x.shape  # batch, length, dim
+        N, L, D = x.shape 
         
         effective_lengths = (m > eps).sum(dim=1).float()
         len_keep = torch.ceil(effective_lengths * (1 - mask_ratio)).long()
@@ -303,7 +299,7 @@ class MAE(nn.Module):
         
         # Exclude specific columns from masking 
         if exclude_columns is not None and len(exclude_columns) > 0:
-            noise[:, exclude_columns] = 0  # low noise -> will be kept
+            noise[:, exclude_columns] = 0  
         
         # Sort noise for each sample
         ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
@@ -347,7 +343,8 @@ class MAE(nn.Module):
     
     def forward_encoder(
         self,
-        tokens: torch.Tensor,
+        loinc_tokens: torch.Tensor,   
+        value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
         mask_ratio: float
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -355,23 +352,24 @@ class MAE(nn.Module):
         Encoder forward pass
         
         Args:
-            features: (B, L, input_dim) raw input features
-            missing_mask: (B, L) from HDF5 (1=observed, 0=missing)
+            loinc_tokens: (B, N), CLS + loinc codes
+            value_tokens: (B, N), lab test values
+            missing_mask: (B, N) 
             mask_ratio: masking ratio
         
         Returns:
             latent: (B, max_len_keep+1, encoder_embed_dim) encoded features (if use_cls_token)
-            mask: (B, L) MAE mask (1=masked, 0=kept)
-            nask: (B, L) inverse mask (1=kept, 0=masked)
-            ids_restore: (B, L) restore indices
+            mask: (B, N) MAE mask (1=masked, 0=kept)
+            nask: (B, N) inverse mask (1=kept, 0=masked)
+            ids_restore: (B, N) restore indices
             attn_mask: (B, max_len_keep+1) attention mask for encoder
         """
-        B, L= tokens.shape
+        B, N= loinc_tokens.shape
         # Tokens -> embeddings
-        features = self.embed_tokens(tokens) # (B, L, input_dim)
+        features = self.embed_tokens(loinc_tokens, value_tokens) 
         
         # Project to encoder dimension
-        x = self.patch_embed(features)  # (B, L, encoder_embed_dim)
+        x = self.patch_embed(features)  
         
         # Add positional embeddings
         if self.use_cls_token:
@@ -488,7 +486,8 @@ class MAE(nn.Module):
     
     def forward_loss(
         self,
-        tokens: torch.Tensor,
+        loinc_tokens: torch.Tensor,   
+        value_tokens: torch.Tensor,
         pred: torch.Tensor,
         mask: torch.Tensor,
         missing_mask: torch.Tensor
@@ -497,16 +496,16 @@ class MAE(nn.Module):
         Compute MSE loss on masked positions only
         
         Args:
-            target: (B, L, input_dim) original features
-            pred: (B, L, input_dim) predicted features
-            mask: (B, L) - 1=masked by MAE, 0=visible
-            missing_mask: (B, L) - 1=observed, 0=originally missing
+            target: (B, N, input_dim) original features
+            pred: (B, N, input_dim) predicted features
+            mask: (B, N) - 1=masked by MAE, 0=visible
+            missing_mask: (B, N) - 1=observed, 0=originally missing
         
         Returns:
             loss: MSE
         """
         with torch.no_grad():
-            target = self.embed_tokens(tokens)  # (B, L, input_dim)
+            target = self.embed_tokens(loinc_tokens, value_tokens)  # (B, L, input_dim)
             valid_mask = (mask * missing_mask) > 0.5
         
         if valid_mask.sum() == 0:
@@ -522,17 +521,13 @@ class MAE(nn.Module):
 
     def forward(
         self,
-        tokens: torch.Tensor,
+        loinc_tokens: torch.Tensor,   
+        value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
         mask_ratio: Optional[float] = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass
-
-        Args:
-            tokens: (B, L) raw token sequence
-            missing_mask: (B, L) from data
-            mask_ratio: masking ratio
 
         Returns:
             loss: scalar reconstruction loss
@@ -544,20 +539,21 @@ class MAE(nn.Module):
         
         # Encoder: embed and mask
         latent, mask, nask, ids_restore, attn_mask = self.forward_encoder(
-            tokens, missing_mask, mask_ratio
+            loinc_tokens, value_tokens, missing_mask, mask_ratio
         )
 
         # Decoder: reconstruct
         pred = self.forward_decoder(latent, ids_restore, attn_mask)
 
         # Loss
-        loss = self.forward_loss(tokens, pred, mask, missing_mask)
+        loss = self.forward_loss(loinc_tokens, value_tokens, pred, mask, missing_mask)
 
         return loss, pred, mask
 
     def encode_only(
         self,
-        features: torch.Tensor,
+        loinc_tokens: torch.Tensor,   
+        value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
         mask_ratio: float = 0.0
     ) -> torch.Tensor:
@@ -572,12 +568,15 @@ class MAE(nn.Module):
         Returns:
             features: (B, num_tokens, encoder_embed_dim) encoder output
         """
-        latent, _, _, _, _ = self.forward_encoder(features, missing_mask, mask_ratio)
+        latent, _, _, _, _ = self.forward_encoder(
+            loinc_tokens, value_tokens, missing_mask, mask_ratio
+        )
         return latent
 
     def reconstruct(
         self,
-        features: torch.Tensor,
+        loinc_tokens: torch.Tensor,   
+        value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
         mask_ratio: float = 0.75
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -594,7 +593,7 @@ class MAE(nn.Module):
             mask: (B, L) which tokens were masked
         """
         latent, mask, nask, ids_restore, attn_mask = self.forward_encoder(
-            features, missing_mask, mask_ratio
+            loinc_tokens, value_tokens, missing_mask, mask_ratio
         )
         pred = self.forward_decoder(latent, ids_restore, attn_mask)
         return pred, mask

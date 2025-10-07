@@ -7,7 +7,6 @@ from sklearn.model_selection import train_test_split
 This file is used for extract target columns from MIMIC-IV dataset with loinc code mapping.
 Processed dataset are saved in ./data/raw/ and ./data/clean/
 Raw extracted dataset (with cleaning duplicate rows and missing loinc code): ./data/raw/clean_data.csv
-Split into train & test set: ./data/clean/train_data.csv, ./data/clean/test_data.csv
 """
 
 def load_and_filter_data(file_path):
@@ -178,8 +177,6 @@ def main():
     input_file = 'data/sample_lab_with_loinc.csv'
     base_output_path = 'data'
     clean_norm_path = os.path.join(base_output_path, 'clean', 'norm')
-    clean_train_path = os.path.join(base_output_path, 'clean', 'train')
-    clean_test_path = os.path.join(base_output_path, 'clean', 'test')
 
     print("="*60)
     print("Step 1: Loading and filtering data")
@@ -208,7 +205,7 @@ def main():
     if df_normalized['value'].notna().sum() > 0:
         print(f"The 'value' column now contains normalized bin numbers (0-{df_normalized['value'].max():.0f})")
 
-    return df_filtered, df_clean, df_normalized, train_df, test_df
+    return df_filtered, df_clean, df_normalized
 
 if __name__ == "__main__":
-    df_filtered, df_clean, df_normalized, train_df, test_df = main()
+    df_filtered, df_clean, df_normalized = main()
