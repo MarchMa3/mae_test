@@ -161,7 +161,7 @@ def main():
     print("MODEL INITIALIZATION")
     print("="*60)
     
-    model = mae_small(
+    model = mae_base(
         seq_len=seq_len,
         vocab_size=vocab_size,
         input_dim=64,
