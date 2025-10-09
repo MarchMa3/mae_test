@@ -219,6 +219,7 @@ def main():
     model = mae_small(  # Using small model for faster training
         seq_len=seq_len,
         vocab_size=vocab_size,
+        num_bins=10,
         input_dim=64,
         use_cls_token=True,
         mask_ratio=0.75,

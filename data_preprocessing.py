@@ -36,10 +36,10 @@ def load_and_filter_data_dask(file_path):
     print(f"Data loaded into {ddf.npartitions} partitions")
     return ddf
 
+def transform(x):
+    return np.sign(x) * np.log(np.abs(x) + 1)
+
 def clean_and_validate_dask(ddf):
-    """
-    Clean data - Dask version with statistics
-    """
     print("Cleaning and validating data...")
     
     # Count initial rows
@@ -83,60 +83,49 @@ def clean_and_validate_dask(ddf):
     
     return ddf
 
-def quantile_normalization_dask(ddf, n_bins=10):
-    """
-    Quantile normalization - PRESERVING MISSING VALUES
-    Only normalize non-missing values, keep NaN as NaN
-    """
-    print(f"Normalizing with {n_bins} bins (preserving missing values)...")
-    
+def minmax_normalization(ddf, n_bins=10):
+    print(f"Computing global min/max for each loinc_code...")
+
+    ddf_valid = ddf[ddf['value'].notnull()]
+    global_stats = ddf_valid.groupby('loinc_code')['value'].agg(['min', 'max']).compute()
+    global_stats = global_stats.reset_index()
+    global_stats.columns = ['loinc_code', 'MIN_VALUE', 'MAX_VALUE']
+
+    global_stats = global_stats[global_stats['MIN_VALUE'] != global_stats['MAX_VALUE']]
+    print(f"Normalizing with {n_bins} equal-width bins for {len(global_stats)} loinc_codes...")
+
     def normalize_partition(df):
-        """Normalize each partition while preserving missing values"""
         if len(df) == 0:
             return df
         
-        def normalize_group(group):
-            """Normalize each loinc_code group, preserving missing values"""
-            # Separate missing and non-missing values
-            mask_missing = group.isna()
-            non_missing = group[~mask_missing]
-            
-            # If all values are missing, return as is
-            if len(non_missing) == 0:
-                return group
-            
-            log_transformed = np.log1p(non_missing)
-            n_unique = log_transformed.nunique()
-            
-            # Normalize only non-missing values
-            try:
-                normalized = pd.qcut(log_transformed, q=n_bins, labels=False, duplicates='drop')
-            except ValueError:
-                if n_unique > 1:
-                    try:
-                        normalized = pd.cut(log_transformed, bins=min(n_unique, n_bins), 
-                                          labels=False, include_lowest=True)
-                    except:
-                        normalized = pd.Series(0, index=log_transformed.index)
-                else:
-                    normalized = pd.Series(0, index=log_transformed.index)
-            
-            # Reconstruct full series: keep NaN in their original positions
-            result = pd.Series(index=group.index, dtype='float64')
-            result[~mask_missing] = normalized.astype('float64')
-            result[mask_missing] = np.nan  # Preserve NaN
-            
-            return result
+        df = df.merge(global_stats, how='left', on='loinc_code')
+        has_stats = df['MIN_VALUE'].notna() & df['MAX_VALUE'].notna()
+        has_value = df['value'].notna()
+        valid_mask = has_stats & has_value
+
+        if valid_mask.sum() > 0:
+            valid_values = df.loc[valid_mask, 'value'].astype(float)
+            valid_mins = df.loc[valid_mask, 'MIN_VALUE'].astype(float)
+            valid_maxs = df.loc[valid_mask, 'MAX_VALUE'].astype(float)
         
-        # Normalize each loinc_code within this partition
-        df = df.copy()
-        df['value'] = df.groupby('loinc_code')['value'].transform(normalize_group)
+            t_val = transform(valid_values)
+            t_min = transform(valid_mins)
+            t_max = transform(valid_maxs)
+
+            # Normalize
+            span = t_max - t_min
+            pos = ((t_val - t_min) / span).clip(lower=0, upper=1 - 1e-12)
+            bins = np.floor(pos * n_bins).astype(float)
+
+            df.loc[valid_mask, 'value'] = bins.astype(float)
+        
+        df.loc[~valid_mask, 'value'] = np.nan
+
+        df = df.drop(columns=['MIN_VALUE', 'MAX_VALUE'], errors='ignore')
+
         return df
-    
-    # Apply to all partitions
     ddf = ddf.map_partitions(normalize_partition, meta=ddf)
-    
-    return ddf
+    return ddf  
 
 def main():
     """
@@ -147,7 +136,7 @@ def main():
     
     print("="*60)
     print("DASK Parallel Processing Pipeline")
-    print("(Preserving Missing Values)")
+    print("(Min-Max Normalization - Method 1)")
     print("="*60)
     
     print("\nStep 1: Loading data")
@@ -158,9 +147,20 @@ def main():
     print("-"*60)
     ddf_clean = clean_and_validate_dask(ddf)
     
-    print("\nStep 3: Quantile normalization (preserving missing values)")
+    print("\nStep 3: Min-max normalization (sign-preserving log + linear)")
     print("-"*60)
-    ddf_normalized = quantile_normalization_dask(ddf_clean, n_bins=10)
+    ddf_normalized = minmax_normalization(ddf_clean, n_bins=10)
+    
+    # Check missing values after normalization
+    print("\nPost-normalization statistics:")
+    print("-"*60)
+    total_rows = len(ddf_normalized)
+    rows_with_values = ddf_normalized['value'].notnull().sum().compute()
+    rows_missing_values = total_rows - rows_with_values
+    pct_missing = (rows_missing_values / total_rows * 100) if total_rows > 0 else 0
+    print(f"Total rows: {total_rows:,}")
+    print(f"  Rows with normalized values: {rows_with_values:,}")
+    print(f"  Rows with missing values: {rows_missing_values:,} ({pct_missing:.2f}%)")
     
     print("\nStep 4: Computing and saving results")
     print("-"*60)

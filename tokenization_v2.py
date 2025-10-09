@@ -73,14 +73,14 @@ def build_sequent(df, vocab_info):
         loinc_tokens = [CLS_TOKEN] + [loinc2tokenid[str(lc)] for lc in loinc_codes]
         
         # Handle missing values vectorized
-        value_tokens = [0.0]
+        value_tokens = [0]
         for val in values:
             total_records += 1
             if pd.isna(val):
-                value_tokens.append(float(MISSING_TOKEN))
+                value_tokens.append(MISSING_TOKEN)
                 missing_value_count += 1
             else:
-                value_tokens.append(float(val))
+                value_tokens.append(int(val) + 4) # shift or special tokens
 
         seq_key = (patient_id, str(date))
         patient_daily_seq[seq_key] = {

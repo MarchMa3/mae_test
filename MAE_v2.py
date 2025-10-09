@@ -133,6 +133,7 @@ class MAE(nn.Module):
         self,
         seq_len: int,
         vocab_size: int,
+        num_bins: int=10,
         input_dim: int=64,
         encoder_embed_dim: int=768,
         decoder_embed_dim: int=512,
@@ -149,6 +150,7 @@ class MAE(nn.Module):
         super().__init__()
         self.seq_len = seq_len
         self.vocab_size = vocab_size
+        self.num_bins = num_bins
         self.input_dim = input_dim
         self.encoder_embed_dim = encoder_embed_dim
         self.decoder_embed_dim = decoder_embed_dim
@@ -160,7 +162,8 @@ class MAE(nn.Module):
 
         # tokens to embeddings
         self.token_embedding = nn.Embedding(vocab_size, input_dim)
-        self.value_projection = nn.Linear(1, input_dim)
+        # 0-3 means special tokens; 4-13 means bins
+        self.value_embedding = nn.Embedding(num_bins+4, input_dim)
 
         # Patch layer
         self.patch_embed = nn.Sequential(
@@ -246,7 +249,7 @@ class MAE(nn.Module):
         Deal with loinc and value tokens seperately.
         Args:
             loinc_tokens: (B, N), CLS + loinc codes
-            value_tokens: (B, N), lab test values
+            value_tokens: (B, N), bin numbers (0-9) or MISSING token
         
         Returns:
             embeddings: (B, N, input_dim)
@@ -257,7 +260,7 @@ class MAE(nn.Module):
         loinc_emb = self.token_embedding(loinc_tokens.long())
 
         # value embedding
-        value_emb = self.value_projection(value_tokens.unsqueeze(-1))
+        value_emb = self.value_embedding(value_tokens.long())
 
         embeddings = loinc_emb + value_emb
         embeddings[:, 0, :] = loinc_emb[:, 0, :]
@@ -476,11 +479,11 @@ class MAE(nn.Module):
         x_full = self.decoder_norm(x_full)
         
         # Prediction head
-        pred = self.decoder_pred(x_full)  # (B, L+1, hdf5_embed_dim) or (B, L, hdf5_embed_dim)
+        pred = self.decoder_pred(x_full)  
         
         # Remove CLS token from predictions
         if self.use_cls_token:
-            pred = pred[:, 1:, :]  # (B, L, hdf5_embed_dim)
+            pred = pred[:, 1:, :] 
         
         return pred
     
@@ -603,6 +606,10 @@ def mae_small(**kwargs):
     """Small MAE model for quick experiments"""
     if 'input_dim' not in kwargs or 'seq_len' not in kwargs:
         raise ValueError("Must provide 'input_dim' and 'seq_len'")
+    
+    if 'num_bins' not in kwargs:
+        kwargs['num_bins'] = 10
+
     model = MAE(
         encoder_embed_dim=256,
         decoder_embed_dim=128,
@@ -619,6 +626,10 @@ def mae_base(**kwargs):
     """Base MAE model (balanced)"""
     if 'input_dim' not in kwargs or 'seq_len' not in kwargs:
         raise ValueError("Must provide 'input_dim' and 'seq_len'")
+
+    if 'num_bins' not in kwargs:
+        kwargs['num_bins'] = 10
+
     model = MAE(
         encoder_embed_dim=512,
         decoder_embed_dim=256,
@@ -635,6 +646,10 @@ def mae_large(**kwargs):
     """Large MAE model (best performance)"""
     if 'input_dim' not in kwargs or 'seq_len' not in kwargs:
         raise ValueError("Must provide 'input_dim' and 'seq_len'")
+    
+    if 'num_bins' not in kwargs:
+        kwargs['num_bins'] = 10
+        
     model = MAE(
         encoder_embed_dim=1024,
         decoder_embed_dim=512,
