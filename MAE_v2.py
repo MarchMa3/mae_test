@@ -272,6 +272,7 @@ class MAE(nn.Module):
         x: torch.Tensor,
         m: torch.Tensor,
         mask_ratio: float,
+        actual_lengths: torch.Tensor,
         exclude_columns: List[int] = []
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -293,13 +294,19 @@ class MAE(nn.Module):
         """
         N, L, D = x.shape 
         
-        effective_lengths = (m > eps).sum(dim=1).float()
+        effective_lengths = actual_lengths.float()
         len_keep = torch.ceil(effective_lengths * (1 - mask_ratio)).long()
         
         # Generate random noise for shuffling
         noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
-        noise[m < eps] = 1  # missing values get high noise -> will be removed
         
+        for i in range(N):
+            actual_len = actual_lengths[i].item()
+            noise[i, actual_len:] = 2.0  # padding positions get highest noise
+        
+        # Missing values get high noise (but lower than padding)
+        noise[m < eps] = 1.5
+
         # Exclude specific columns from masking 
         if exclude_columns is not None and len(exclude_columns) > 0:
             noise[:, exclude_columns] = 0  
@@ -349,7 +356,8 @@ class MAE(nn.Module):
         loinc_tokens: torch.Tensor,   
         value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
-        mask_ratio: float
+        mask_ratio: float,
+        actual_lengths: torch.Tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Encoder forward pass
@@ -359,6 +367,7 @@ class MAE(nn.Module):
             value_tokens: (B, N), lab test values
             missing_mask: (B, N) 
             mask_ratio: masking ratio
+            actual_lengths: (B,) actual sequence length for each sample (excluding padding)
         
         Returns:
             latent: (B, max_len_keep+1, encoder_embed_dim) encoded features (if use_cls_token)
@@ -367,7 +376,12 @@ class MAE(nn.Module):
             ids_restore: (B, N) restore indices
             attn_mask: (B, max_len_keep+1) attention mask for encoder
         """
-        B, N= loinc_tokens.shape
+        B, N = loinc_tokens.shape
+        
+        # If actual_lengths not provided, compute from loinc_tokens (backward compatibility)
+        if actual_lengths is None:
+            actual_lengths = (loinc_tokens != 0).sum(dim=1)
+        
         # Tokens -> embeddings
         features = self.embed_tokens(loinc_tokens, value_tokens) 
         
@@ -380,9 +394,9 @@ class MAE(nn.Module):
         else:
             x = x + self.encoder_pos_embed
         
-        # Random masking with attention mask
+        # Random masking with attention mask (pass actual_lengths)
         x_masked, mask, nask, ids_restore, attn_mask = self.random_masking(
-            x, missing_mask, mask_ratio, self.exclude_columns
+            x, missing_mask, mask_ratio, actual_lengths, self.exclude_columns
         )  # x_masked: (B, max_len_keep, encoder_embed_dim)
         
         # Add CLS token if needed
@@ -391,11 +405,11 @@ class MAE(nn.Module):
             cls_tokens = cls_token.expand(B, -1, -1)
             x_masked = torch.cat([cls_tokens, x_masked], dim=1)  # (B, max_len_keep+1, D)
             
-            #  CLS token can attend to everything (add 1 to attn_mask)
+            # CLS token can attend to everything (add 1 to attn_mask)
             cls_mask = torch.ones(B, 1, device=x_masked.device)
             attn_mask = torch.cat([cls_mask, attn_mask], dim=1)  # (B, max_len_keep+1)
         
-        #  Pass attention mask through encoder blocks
+        # Pass attention mask through encoder blocks
         for block in self.encoder:
             x_masked = block(x_masked, attn_mask=attn_mask)
         
@@ -512,7 +526,7 @@ class MAE(nn.Module):
             valid_mask = (mask * missing_mask) > 0.5
         
         if valid_mask.sum() == 0:
-            return torch.tensor(0.0, device=tokens.device)
+            return torch.tensor(0.0, device=pred.device)
         
         loss = torch.nn.functional.mse_loss(
             pred[valid_mask], 
@@ -527,10 +541,18 @@ class MAE(nn.Module):
         loinc_tokens: torch.Tensor,   
         value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
-        mask_ratio: Optional[float] = None
+        mask_ratio: Optional[float] = None,
+        actual_lengths: torch.Tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass
+
+        Args:
+            loinc_tokens: (B, N), CLS + loinc codes
+            value_tokens: (B, N), lab test values
+            missing_mask: (B, N)
+            mask_ratio: masking ratio (if None, use self.mask_ratio)
+            actual_lengths: (B,) actual sequence length for each sample
 
         Returns:
             loss: scalar reconstruction loss
@@ -542,7 +564,7 @@ class MAE(nn.Module):
         
         # Encoder: embed and mask
         latent, mask, nask, ids_restore, attn_mask = self.forward_encoder(
-            loinc_tokens, value_tokens, missing_mask, mask_ratio
+            loinc_tokens, value_tokens, missing_mask, mask_ratio, actual_lengths
         )
 
         # Decoder: reconstruct
@@ -558,21 +580,24 @@ class MAE(nn.Module):
         loinc_tokens: torch.Tensor,   
         value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
-        mask_ratio: float = 0.0
+        mask_ratio: float = 0.0,
+        actual_lengths: torch.Tensor = None
     ) -> torch.Tensor:
         """
         Extract encoder features without reconstruction
         
         Args:
-            features: (B, L, input_dim)
+            loinc_tokens: (B, N), CLS + loinc codes
+            value_tokens: (B, N), lab test values
             missing_mask: (B, L)
             mask_ratio: 0.0 for no masking, >0 for masked encoding
+            actual_lengths: (B,) actual sequence length for each sample
         
         Returns:
             features: (B, num_tokens, encoder_embed_dim) encoder output
         """
         latent, _, _, _, _ = self.forward_encoder(
-            loinc_tokens, value_tokens, missing_mask, mask_ratio
+            loinc_tokens, value_tokens, missing_mask, mask_ratio, actual_lengths
         )
         return latent
 
@@ -581,22 +606,25 @@ class MAE(nn.Module):
         loinc_tokens: torch.Tensor,   
         value_tokens: torch.Tensor,
         missing_mask: torch.Tensor,
-        mask_ratio: float = 0.75
+        mask_ratio: float = 0.75,
+        actual_lengths: torch.Tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Reconstruct embeddings without computing loss
         
         Args:
-            features: (B, L, input_dim)
+            loinc_tokens: (B, N), CLS + loinc codes
+            value_tokens: (B, N), lab test values
             missing_mask: (B, L)
             mask_ratio: masking ratio
+            actual_lengths: (B,) actual sequence length for each sample
         
         Returns:
             pred: (B, L, input_dim) predictions
             mask: (B, L) which tokens were masked
         """
         latent, mask, nask, ids_restore, attn_mask = self.forward_encoder(
-            loinc_tokens, value_tokens, missing_mask, mask_ratio
+            loinc_tokens, value_tokens, missing_mask, mask_ratio, actual_lengths
         )
         pred = self.forward_decoder(latent, ids_restore, attn_mask)
         return pred, mask
