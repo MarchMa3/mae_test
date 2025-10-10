@@ -7,6 +7,24 @@ import torch.nn as nn
 import math
 import torch.utils.data as data
 import os
+from typing import List, Dict, Any
+
+PAD_LOINC_ID: int = 0
+PAD_VALUE_ID: int = 0
+PAD_MASK_VAL: float = 0.0
+
+# Helper function
+def _to_1d_long(x) -> torch.Tensor:
+    t = torch.as_tensor(x)
+    if t.ndim != 1:
+        t = t.view(-1)
+    return t.long()
+
+def _to_1d_float(x) -> torch.Tensor:
+    t = torch.as_tensor(x)
+    if t.ndim != 1:
+        t = t.view(-1)
+    return t.float()
 
 def get_1d_sincos_pos_embed(embed_dim, pos, cls_token=False):
     """
@@ -69,22 +87,32 @@ class LabDataset(data.Dataset):
             value_tokens: (N, seq_len) numpy array
             missing_mask: (N, seq_len) from 'missing_mask'
         """
-        self.loinc_tokens = torch.from_numpy(loinc_tokens) 
-        self.value_tokens = torch.from_numpy(value_tokens)
-        self.missing_mask = torch.from_numpy(missing_mask).float() if isinstance(missing_mask, np.ndarray) else missing_mask
-        self.targets = targets
-
-        assert self.tokens.shape[:2] == self.missing_mask.shape, \
-            f"Shape mismatch: tokens {self.tokens.shape[:2]} vs missing_mask {self.missing_mask.shape}"
+        self.loinc_tokens: List[torch.Tensor] = []
+        self.value_tokens: List[torch.Tensor] = []
+        self.missing_mask: List[torch.Tensor] = []
+        self.actual_lengths: List[int] = []
         
+        for lt, vt, mm in zip(loinc_tokens, value_tokens, missing_mask):
+            lt_t = _to_1d_long(lt)
+            vt_t = _to_1d_long(vt)
+            mm_t = _to_1d_float(mm)
+
+            self.loinc_tokens.append(lt_t)
+            self.value_tokens.append(vt_t)
+            self.missing_mask.append(mm_t)
+
+            actual_len = int((lt_t != PAD_LOINC_ID).sum().item())
+            self.actual_lengths.append(actual_len)
+    
     def __len__(self):
         return len(self.loinc_tokens)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> Dict[str, Any]:
         return {
-            'loinc_tokens': self.loinc_tokens[idx],  
-            'value_tokens': self.value_tokens[idx],  
-            'missing_mask': self.missing_mask[idx]
+            'loinc_tokens': self.loinc_tokens[idx],
+            'value_tokens': self.value_tokens[idx],
+            'missing_mask': self.missing_mask[idx],
+            'actual_len': self.actual_lengths[idx]
         }
 
 def save_checkpoint(state, filepath, is_best=False):
@@ -176,3 +204,37 @@ def init_weights(module):
         nn.init.constant_(module.bias, 0)
     elif isinstance(module, nn.Embedding):
         nn.init.normal_(module.weight, std=0.02)
+
+def collate_fn_dynamic(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+    """
+    Dynamic collate function for variable-length sequences.
+    Only pads to the maximum length within each batch.
+    """
+    lens = torch.tensor([item['actual_len'] for item in batch], dtype=torch.long)
+    batch_len: int = int(lens.max().item()) # get max len within batch
+    B: int = len(batch)
+
+    loinc_padded = torch.full((B, batch_len), fill_value=PAD_LOINC_ID, dtype=torch.long)
+    value_padded = torch.full((B, batch_len), fill_value=PAD_VALUE_ID, dtype=torch.long)
+    mask_padded = torch.full((B, batch_len), fill_value=PAD_MASK_VAL, dtype=torch.float32)
+
+    for i, item in enumerate(batch):
+        L = int(item['actual_len'])
+        loinc = item['loinc_tokens']
+        value = item['value_tokens']
+        mask = item['missing_mask']
+
+        loinc = loinc.long()
+        value = value.long()
+        mask = mask.float()
+
+        loinc_padded[i, :L] = loinc
+        value_padded[i, :L] = value
+        mask_padded[i, :L] = mask
+
+    return {
+        'loinc_tokens': loinc_padded,
+        'value_tokens': value_padded,
+        'missing_mask': mask_padded,
+        'actual_lengths': lens
+    }
