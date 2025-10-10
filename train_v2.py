@@ -74,13 +74,11 @@ def train_one_epoch(model, dataloader, optimizer, scaler, device, epoch, world_s
 
         optimizer.zero_grad()
         
-        # 🔥 混合精度前向传播
         with autocast():
-            loss, _, _ = model(loinc_tokens, value_tokens, missing_mask, actual_lengths=actual_lengths)
+            loss, _, _ = model(loinc_tokens, value_tokens, missing_mask, mask_ratio=None, actual_lengths=actual_lengths)
             if isinstance(loss, tuple):
                 loss = loss[0]
         
-        # 🔥 混合精度反向传播
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
@@ -104,9 +102,8 @@ def validate(model, dataloader, device, world_size):
         missing_mask = batch['missing_mask'].to(device)
         actual_lengths = batch['actual_lengths'].to(device)
 
-        # 🔥 验证时也用混合精度
         with autocast():
-            loss, _, _ = model(loinc_tokens, value_tokens, missing_mask, mask_ratio=0.75, actual_lengths=actual_lengths)
+            loss, _, _ = model(loinc_tokens, value_tokens, missing_mask, mask_ratio=None, actual_lengths=actual_lengths)
             if isinstance(loss, tuple):
                 loss = loss[0]
         
