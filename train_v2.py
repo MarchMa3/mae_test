@@ -90,7 +90,7 @@ def train_one_epoch(model, dataloader, optimizer, scaler, device, epoch, world_s
             torch.cuda.empty_cache()
 
         if rank == 0 and (batch_idx + 1) % 100 == 0:
-            current_lr = optimizer.param_groupss[0]['lr']
+            current_lr = optimizer.param_groups[0]['lr']  
             wandb.log({
                 "train/batch_loss": loss.item(),
                 "train/learning_rate": current_lr,
@@ -160,24 +160,49 @@ def main():
         print("Loading data...")
     
     if rank == 0:
-        os.environ['WANDB_MODE'] = 'offline'
-        os.environ['WAND_DIR'] = './wandb_logs'
-
-        wandb.init(
-            project="mae-mimic",
-            name=f"{args.model_size}_bs{args.batch_size * world_size}_lr{args.lr}",
-            config={
-                "model_size":args.model_size,
-                "batch_size_per_gpu": args.batch_size,
-                "total_batch_size": args.batch_size * world_size,
-                "learning_rate": args.lr,
-                "epochs": args.epochs,
-                "mask_ratio": args.mask_ratio,
-                "weight_decay": args.weight_decay,
-                "patience": args.patience,
-                "num_gpus": world_size,
-            }
-        )
+        os.environ['WANDB_MODE'] = 'online'
+        os.environ['WANDB_DISABLED'] = 'false'
+        os.environ['WANDB_API_KEY'] = '6cf65e599a667502406f2f26fd010cf12ac94b99'
+        
+        print("\n" + "=" * 60)
+        print("Initializing WandB...")
+        print("=" * 60)
+        
+        try:
+            wandb.login(key='6cf65e599a667502406f2f26fd010cf12ac94b99', relogin=True, force=True)
+            
+            wandb.init(
+                project="mae-mimic",
+                name=f"{args.model_size}_bs{args.batch_size * world_size}_lr{args.lr}",
+                config={
+                    "model_size": args.model_size,
+                    "batch_size_per_gpu": args.batch_size,
+                    "total_batch_size": args.batch_size * world_size,
+                    "learning_rate": args.lr,
+                    "epochs": args.epochs,
+                    "mask_ratio": args.mask_ratio,
+                    "weight_decay": args.weight_decay,
+                    "patience": args.patience,
+                    "num_gpus": world_size,
+                },
+                mode="online",
+                settings=wandb.Settings(
+                    start_method="thread",
+                    _disable_stats=False,
+                    _disable_meta=False
+                )
+            )
+            print(f"✓ WandB initialized successfully!")
+            print(f"✓ Project: {wandb.run.project}")
+            print(f"✓ Run name: {wandb.run.name}")
+            print(f"✓ Run URL: {wandb.run.get_url()}")
+            print("=" * 60 + "\n")
+        except Exception as e:
+            print(f"⚠ Warning: Failed to initialize WandB: {e}")
+            print("Training will continue without WandB logging.")
+            print("=" * 60 + "\n")
+            import traceback
+            traceback.print_exc()
 
     loinc_tokens, value_tokens, missing_mask, seq_len, vocab_size = load_sequences_from_pickle(args.data)
 
@@ -257,7 +282,7 @@ def main():
 
     if rank == 0:
         print("\n" + "=" * 60)
-        print("TRAINING START (DDP + Mixed Precision)")  
+        print("TRAINING START (DDP + Mixed Precision)")
         print("=" * 60)
         print(f"epochs={args.epochs}, batch_size_per_gpu={args.batch_size}, num_workers={args.num_workers}")
         print(f"Total batch size: {args.batch_size * world_size}")
@@ -268,7 +293,7 @@ def main():
         adjust_learning_rate(optimizer, epoch-1, lr=args.lr, min_lr=args.lr*0.1,
                              max_epochs=args.epochs, warmup_epochs=max(1, args.epochs//20))
 
-        train_loss = train_one_epoch(model, train_loader, optimizer, scaler, device, epoch, world_size, rank)  
+        train_loss = train_one_epoch(model, train_loader, optimizer, scaler, device, epoch, world_size, rank)
         val_loss = validate(model, val_loader, device, world_size)
 
         if rank == 0:

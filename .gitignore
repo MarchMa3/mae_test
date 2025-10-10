@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Data
+data/
+mimic_data/
+*.csv
+*.h5
+*.pkl
+
+# Models
+checkpoints_mimic/
+*.pth
+
+# Logs
+log/
+wandb_logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# System
+.DS_Store
