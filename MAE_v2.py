@@ -388,11 +388,12 @@ class MAE(nn.Module):
         # Project to encoder dimension
         x = self.patch_embed(features)  
         
+        current_len = x.shape[1]
         # Add positional embeddings
         if self.use_cls_token:
-            x = x + self.encoder_pos_embed[:, 1:, :]  # skip cls token position
+            x = x + self.encoder_pos_embed[:, 1:current_len+1, :]  # skip cls token position
         else:
-            x = x + self.encoder_pos_embed
+            x = x + self.encoder_pos_embed[:, :current_len, :]
         
         # Random masking with attention mask (pass actual_lengths)
         x_masked, mask, nask, ids_restore, attn_mask = self.random_masking(
@@ -484,7 +485,8 @@ class MAE(nn.Module):
             x_full = torch.cat([x[:, :1, :], x_full], dim=1)  # (B, L+1, D)
         
         # Add decoder position embeddings
-        x_full = x_full + self.decoder_pos_embed
+        current_len = x_full.shape[1]
+        x_full = x_full + self.decoder_pos_embed[:, :current_len, :]
         
         # Apply decoder blocks (no attention mask needed in decoder)
         for block in self.decoder:

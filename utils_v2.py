@@ -228,9 +228,9 @@ def collate_fn_dynamic(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
         value = value.long()
         mask = mask.float()
 
-        loinc_padded[i, :L] = loinc
-        value_padded[i, :L] = value
-        mask_padded[i, :L] = mask
+        loinc_padded[i, :L] = loinc[:L]
+        value_padded[i, :L] = value[:L]
+        mask_padded[i, :L] = mask[:L]
 
     return {
         'loinc_tokens': loinc_padded,

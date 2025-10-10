@@ -9,6 +9,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.cuda.amp import autocast, GradScaler  
+import wandb
 
 from MAE_v2 import mae_large, mae_base, mae_small
 from utils_v2 import (
@@ -85,8 +86,20 @@ def train_one_epoch(model, dataloader, optimizer, scaler, device, epoch, world_s
 
         total_loss += float(loss.item())
 
+        if (batch_idx + 1) % 100 == 0:
+            torch.cuda.empty_cache()
+
         if rank == 0 and (batch_idx + 1) % 100 == 0:
+            current_lr = optimizer.param_groupss[0]['lr']
+            wandb.log({
+                "train/batch_loss": loss.item(),
+                "train/learning_rate": current_lr,
+                "train/epoch": epoch,
+                "train/batch": batch_idx + 1,
+            })
             print(f"  [Epoch {epoch}] Batch [{batch_idx+1}/{len(dataloader)}], Loss: {loss.item():.4f}")
+
+        del loinc_tokens, value_tokens, missing_mask, actual_lengths, loss 
 
     loss_tensor = torch.tensor(total_loss / max(len(dataloader), 1), device=device)
     dist.all_reduce(loss_tensor, op=dist.ReduceOp.AVG)
@@ -145,6 +158,26 @@ def main():
     if rank == 0:
         print(f"DDP world_size={world_size}, local_rank={local_rank}, global_rank={rank}")
         print("Loading data...")
+    
+    if rank == 0:
+        os.environ['WANDB_MODE'] = 'offline'
+        os.environ['WAND_DIR'] = './wandb_logs'
+
+        wandb.init(
+            project="mae-mimic",
+            name=f"{args.model_size}_bs{args.batch_size * world_size}_lr{args.lr}",
+            config={
+                "model_size":args.model_size,
+                "batch_size_per_gpu": args.batch_size,
+                "total_batch_size": args.batch_size * world_size,
+                "learning_rate": args.lr,
+                "epochs": args.epochs,
+                "mask_ratio": args.mask_ratio,
+                "weight_decay": args.weight_decay,
+                "patience": args.patience,
+                "num_gpus": world_size,
+            }
+        )
 
     loinc_tokens, value_tokens, missing_mask, seq_len, vocab_size = load_sequences_from_pickle(args.data)
 
@@ -239,6 +272,11 @@ def main():
         val_loss = validate(model, val_loader, device, world_size)
 
         if rank == 0:
+            wandb.log({
+                "epoch/train_loss": train_loss,
+                "epoch/val_loss": val_loss,
+                "epoch/epoch": epoch,
+            })
             print(f"\nEpoch [{epoch}/{args.epochs}]  Train Loss: {train_loss:.4f}  Val Loss: {val_loss:.4f}")
 
             is_best = val_loss < best_val_loss
@@ -273,6 +311,8 @@ def main():
         print("TRAINING COMPLETE")
         print("=" * 60)
         print(f"Best validation loss: {best_val_loss:.4f}")
+
+        wandb.finish()
 
     dist.barrier()
     dist.destroy_process_group()
