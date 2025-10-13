@@ -1,4 +1,5 @@
 """
+Add categorical classifier heads.
 Tokenization includes 1 tokens for 1 lab test (seperately).
 Sequence format: [CLS, test1, test2, test3, ...]
   - loinc_tokens: [CLS, loinc1, loinc2, ...]
@@ -134,7 +135,7 @@ class MAE(nn.Module):
         seq_len: int,
         vocab_size: int,
         num_bins: int=10,
-        input_dim: int=256,
+        input_dim: int=64,
         encoder_embed_dim: int=768,
         decoder_embed_dim: int=512,
         encoder_depth: int=12,
@@ -142,9 +143,9 @@ class MAE(nn.Module):
         num_heads: int=12,
         mlp_ratio: float=4.0,
         use_cls_token: bool=True,
-        mask_ratio: float=0.5,
-        drop_ratio: float=0.,
-        attn_drop_ratio: float=0.,
+        mask_ratio: float=0.75,
+        drop_ratio: float=0.1,
+        attn_drop_ratio: float=0.1,
         exclude_columns: List[int] = []
     ):
         super().__init__()
@@ -162,6 +163,7 @@ class MAE(nn.Module):
 
         # tokens to embeddings
         self.token_embedding = nn.Embedding(vocab_size, input_dim)
+        # 0-3 means special tokens; 4-13 means bins
         self.value_embedding = nn.Embedding(num_bins+4, input_dim)
 
         # Patch layer
@@ -225,7 +227,7 @@ class MAE(nn.Module):
                 num_heads=num_heads,
                 mlp_ratio=mlp_ratio,
                 qkv_bias=True,
-                drop=drop_ratio,
+                drop=min(drop_ratio * 1.5, 0.3),
                 attn_drop=attn_drop_ratio
             )
             for _ in range(decoder_depth)
@@ -529,19 +531,13 @@ class MAE(nn.Module):
         if valid_mask.sum() == 0:
             return torch.tensor(0.0, device=pred.device)
         
-        valid_pred = pred[valid_mask]
-        valid_target = target[valid_mask]
+        loss = torch.nn.functional.mse_loss(
+            pred[valid_mask], 
+            target[valid_mask],
+            reduction='mean'
+        )
         
-        mse_loss = torch.nn.functional.mse_loss(valid_pred, valid_target, reduction='mean')
-        
-        pred_var = valid_pred.var()
-        target_var = valid_target.var()
-        
-        var_loss = torch.nn.functional.relu(target_var * 0.5 - pred_var)
-        
-        total_loss = mse_loss + 0.1 * var_loss
-        
-        return total_loss
+        return loss
 
     def forward(
         self,

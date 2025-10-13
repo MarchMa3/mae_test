@@ -203,7 +203,7 @@ def init_weights(module):
         nn.init.constant_(module.weight, 1.0)
         nn.init.constant_(module.bias, 0)
     elif isinstance(module, nn.Embedding):
-        nn.init.normal_(module.weight, std=0.02)
+        nn.init.normal_(module.weight, std=0.1)
 
 def collate_fn_dynamic(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
     """

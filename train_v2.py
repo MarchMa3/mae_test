@@ -142,6 +142,11 @@ def main():
     parser.add_argument("--lr", type=float, default=2e-4)  
     parser.add_argument("--weight_decay", type=float, default=0.05)
     parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--drop_ratio", type=float, default=0.1, help="Dropout ratio for MLP")
+    parser.add_argument("--attn_drop_ratio", type=float, default=0.1, help="Dropout ratio for attention")
+    parser.add_argument("--min_lr", type=float, default=1e-6, help="Minimum learning rate")
+    parser.add_argument("--warmup_epochs", type=int, default=10, help="Number of warmup epochs")
+    
     args = parser.parse_args()
 
     # DDP init
@@ -242,19 +247,23 @@ def main():
             seq_len=seq_len,
             vocab_size=vocab_size,
             num_bins=10,
-            input_dim=64,
+            input_dim=256,
             use_cls_token=True,
             mask_ratio=args.mask_ratio,
-            exclude_columns=[0] 
+            drop_ratio=args.drop_ratio,          
+            attn_drop_ratio=args.attn_drop_ratio, 
+            exclude_columns=[0]
         )
     elif args.model_size == "base":
         model = mae_base(
             seq_len=seq_len,
             vocab_size=vocab_size,
             num_bins=10,
-            input_dim=64,
+            input_dim=256,
             use_cls_token=True,
             mask_ratio=args.mask_ratio,
+            drop_ratio=args.drop_ratio,          
+            attn_drop_ratio=args.attn_drop_ratio, 
             exclude_columns=[0]
         )
     else:
@@ -262,9 +271,11 @@ def main():
             seq_len=seq_len,
             vocab_size=vocab_size,
             num_bins=10,
-            input_dim=64,
+            input_dim=256,
             use_cls_token=True,
             mask_ratio=args.mask_ratio,
+            drop_ratio=args.drop_ratio,          
+            attn_drop_ratio=args.attn_drop_ratio, 
             exclude_columns=[0]
         )
 
@@ -291,7 +302,7 @@ def main():
         train_sampler.set_epoch(epoch)
 
         adjust_learning_rate(optimizer, epoch-1, lr=args.lr, min_lr=args.lr*0.1,
-                             max_epochs=args.epochs, warmup_epochs=max(1, args.epochs//20))
+                             max_epochs=args.epochs, warmup_epochs=args.warmup_epochs)
 
         train_loss = train_one_epoch(model, train_loader, optimizer, scaler, device, epoch, world_size, rank)
         val_loss = validate(model, val_loader, device, world_size)
