@@ -1,0 +1,336 @@
+Using device: cuda
+⚠️  Using mask_ratio=0.5 (same as training)
+
+✓ Test set: 959,297 sequences
+Loading model...
+✓ Loaded checkpoint from epoch 50
+✓ Model: small, vocab_size=768
+
+
+Evaluating with mask_ratio=0.5...
+  [50/14990] Current Acc: 23.49%
+  [100/14990] Current Acc: 23.31%
+  [150/14990] Current Acc: 23.28%
+  [200/14990] Current Acc: 23.27%
+  [250/14990] Current Acc: 23.20%
+  [300/14990] Current Acc: 23.25%
+  [350/14990] Current Acc: 23.25%
+  [400/14990] Current Acc: 23.32%
+  [450/14990] Current Acc: 23.28%
+  [500/14990] Current Acc: 23.30%
+  [550/14990] Current Acc: 23.30%
+  [600/14990] Current Acc: 23.26%
+  [650/14990] Current Acc: 23.29%
+  [700/14990] Current Acc: 23.36%
+  [750/14990] Current Acc: 23.41%
+  [800/14990] Current Acc: 23.41%
+  [850/14990] Current Acc: 23.39%
+  [900/14990] Current Acc: 23.37%
+  [950/14990] Current Acc: 23.35%
+  [1000/14990] Current Acc: 23.32%
+  [1050/14990] Current Acc: 23.34%
+  [1100/14990] Current Acc: 23.34%
+  [1150/14990] Current Acc: 23.36%
+  [1200/14990] Current Acc: 23.39%
+  [1250/14990] Current Acc: 23.39%
+  [1300/14990] Current Acc: 23.40%
+  [1350/14990] Current Acc: 23.40%
+  [1400/14990] Current Acc: 23.40%
+  [1450/14990] Current Acc: 23.40%
+  [1500/14990] Current Acc: 23.39%
+  [1550/14990] Current Acc: 23.41%
+  [1600/14990] Current Acc: 23.42%
+  [1650/14990] Current Acc: 23.41%
+  [1700/14990] Current Acc: 23.40%
+  [1750/14990] Current Acc: 23.38%
+  [1800/14990] Current Acc: 23.40%
+  [1850/14990] Current Acc: 23.42%
+  [1900/14990] Current Acc: 23.43%
+  [1950/14990] Current Acc: 23.43%
+  [2000/14990] Current Acc: 23.43%
+  [2050/14990] Current Acc: 23.43%
+  [2100/14990] Current Acc: 23.41%
+  [2150/14990] Current Acc: 23.41%
+  [2200/14990] Current Acc: 23.40%
+  [2250/14990] Current Acc: 23.40%
+  [2300/14990] Current Acc: 23.39%
+  [2350/14990] Current Acc: 23.40%
+  [2400/14990] Current Acc: 23.42%
+  [2450/14990] Current Acc: 23.41%
+  [2500/14990] Current Acc: 23.41%
+  [2550/14990] Current Acc: 23.41%
+  [2600/14990] Current Acc: 23.39%
+  [2650/14990] Current Acc: 23.39%
+  [2700/14990] Current Acc: 23.39%
+  [2750/14990] Current Acc: 23.39%
+  [2800/14990] Current Acc: 23.39%
+  [2850/14990] Current Acc: 23.38%
+  [2900/14990] Current Acc: 23.38%
+  [2950/14990] Current Acc: 23.37%
+  [3000/14990] Current Acc: 23.37%
+  [3050/14990] Current Acc: 23.37%
+  [3100/14990] Current Acc: 23.37%
+  [3150/14990] Current Acc: 23.37%
+  [3200/14990] Current Acc: 23.36%
+  [3250/14990] Current Acc: 23.37%
+  [3300/14990] Current Acc: 23.38%
+  [3350/14990] Current Acc: 23.37%
+  [3400/14990] Current Acc: 23.37%
+  [3450/14990] Current Acc: 23.38%
+  [3500/14990] Current Acc: 23.38%
+  [3550/14990] Current Acc: 23.38%
+  [3600/14990] Current Acc: 23.37%
+  [3650/14990] Current Acc: 23.37%
+  [3700/14990] Current Acc: 23.36%
+  [3750/14990] Current Acc: 23.35%
+  [3800/14990] Current Acc: 23.34%
+  [3850/14990] Current Acc: 23.33%
+  [3900/14990] Current Acc: 23.34%
+  [3950/14990] Current Acc: 23.33%
+  [4000/14990] Current Acc: 23.33%
+  [4050/14990] Current Acc: 23.32%
+  [4100/14990] Current Acc: 23.33%
+  [4150/14990] Current Acc: 23.33%
+  [4200/14990] Current Acc: 23.33%
+  [4250/14990] Current Acc: 23.32%
+  [4300/14990] Current Acc: 23.32%
+  [4350/14990] Current Acc: 23.32%
+  [4400/14990] Current Acc: 23.32%
+  [4450/14990] Current Acc: 23.31%
+  [4500/14990] Current Acc: 23.31%
+  [4550/14990] Current Acc: 23.31%
+  [4600/14990] Current Acc: 23.31%
+  [4650/14990] Current Acc: 23.31%
+  [4700/14990] Current Acc: 23.31%
+  [4750/14990] Current Acc: 23.30%
+  [4800/14990] Current Acc: 23.29%
+  [4850/14990] Current Acc: 23.29%
+  [4900/14990] Current Acc: 23.28%
+  [4950/14990] Current Acc: 23.28%
+  [5000/14990] Current Acc: 23.28%
+  [5050/14990] Current Acc: 23.28%
+  [5100/14990] Current Acc: 23.28%
+  [5150/14990] Current Acc: 23.28%
+  [5200/14990] Current Acc: 23.29%
+  [5250/14990] Current Acc: 23.28%
+  [5300/14990] Current Acc: 23.28%
+  [5350/14990] Current Acc: 23.28%
+  [5400/14990] Current Acc: 23.27%
+  [5450/14990] Current Acc: 23.27%
+  [5500/14990] Current Acc: 23.27%
+  [5550/14990] Current Acc: 23.27%
+  [5600/14990] Current Acc: 23.29%
+  [5650/14990] Current Acc: 23.29%
+  [5700/14990] Current Acc: 23.29%
+  [5750/14990] Current Acc: 23.29%
+  [5800/14990] Current Acc: 23.29%
+  [5850/14990] Current Acc: 23.28%
+  [5900/14990] Current Acc: 23.28%
+  [5950/14990] Current Acc: 23.28%
+  [6000/14990] Current Acc: 23.28%
+  [6050/14990] Current Acc: 23.29%
+  [6100/14990] Current Acc: 23.29%
+  [6150/14990] Current Acc: 23.29%
+  [6200/14990] Current Acc: 23.29%
+  [6250/14990] Current Acc: 23.28%
+  [6300/14990] Current Acc: 23.28%
+  [6350/14990] Current Acc: 23.28%
+  [6400/14990] Current Acc: 23.28%
+  [6450/14990] Current Acc: 23.28%
+  [6500/14990] Current Acc: 23.29%
+  [6550/14990] Current Acc: 23.28%
+  [6600/14990] Current Acc: 23.28%
+  [6650/14990] Current Acc: 23.28%
+  [6700/14990] Current Acc: 23.28%
+  [6750/14990] Current Acc: 23.28%
+  [6800/14990] Current Acc: 23.27%
+  [6850/14990] Current Acc: 23.27%
+  [6900/14990] Current Acc: 23.26%
+  [6950/14990] Current Acc: 23.26%
+  [7000/14990] Current Acc: 23.26%
+  [7050/14990] Current Acc: 23.26%
+  [7100/14990] Current Acc: 23.26%
+  [7150/14990] Current Acc: 23.26%
+  [7200/14990] Current Acc: 23.26%
+  [7250/14990] Current Acc: 23.26%
+  [7300/14990] Current Acc: 23.26%
+  [7350/14990] Current Acc: 23.26%
+  [7400/14990] Current Acc: 23.26%
+  [7450/14990] Current Acc: 23.26%
+  [7500/14990] Current Acc: 23.26%
+  [7550/14990] Current Acc: 23.26%
+  [7600/14990] Current Acc: 23.26%
+  [7650/14990] Current Acc: 23.26%
+  [7700/14990] Current Acc: 23.26%
+  [7750/14990] Current Acc: 23.26%
+  [7800/14990] Current Acc: 23.26%
+  [7850/14990] Current Acc: 23.26%
+  [7900/14990] Current Acc: 23.26%
+  [7950/14990] Current Acc: 23.26%
+  [8000/14990] Current Acc: 23.26%
+  [8050/14990] Current Acc: 23.26%
+  [8100/14990] Current Acc: 23.27%
+  [8150/14990] Current Acc: 23.27%
+  [8200/14990] Current Acc: 23.26%
+  [8250/14990] Current Acc: 23.26%
+  [8300/14990] Current Acc: 23.26%
+  [8350/14990] Current Acc: 23.26%
+  [8400/14990] Current Acc: 23.26%
+  [8450/14990] Current Acc: 23.26%
+  [8500/14990] Current Acc: 23.26%
+  [8550/14990] Current Acc: 23.27%
+  [8600/14990] Current Acc: 23.26%
+  [8650/14990] Current Acc: 23.26%
+  [8700/14990] Current Acc: 23.27%
+  [8750/14990] Current Acc: 23.26%
+  [8800/14990] Current Acc: 23.26%
+  [8850/14990] Current Acc: 23.26%
+  [8900/14990] Current Acc: 23.26%
+  [8950/14990] Current Acc: 23.26%
+  [9000/14990] Current Acc: 23.27%
+  [9050/14990] Current Acc: 23.26%
+  [9100/14990] Current Acc: 23.27%
+  [9150/14990] Current Acc: 23.26%
+  [9200/14990] Current Acc: 23.26%
+  [9250/14990] Current Acc: 23.27%
+  [9300/14990] Current Acc: 23.26%
+  [9350/14990] Current Acc: 23.26%
+  [9400/14990] Current Acc: 23.27%
+  [9450/14990] Current Acc: 23.26%
+  [9500/14990] Current Acc: 23.27%
+  [9550/14990] Current Acc: 23.27%
+  [9600/14990] Current Acc: 23.28%
+  [9650/14990] Current Acc: 23.28%
+  [9700/14990] Current Acc: 23.28%
+  [9750/14990] Current Acc: 23.28%
+  [9800/14990] Current Acc: 23.28%
+  [9850/14990] Current Acc: 23.27%
+  [9900/14990] Current Acc: 23.27%
+  [9950/14990] Current Acc: 23.27%
+  [10000/14990] Current Acc: 23.27%
+  [10050/14990] Current Acc: 23.27%
+  [10100/14990] Current Acc: 23.27%
+  [10150/14990] Current Acc: 23.27%
+  [10200/14990] Current Acc: 23.27%
+  [10250/14990] Current Acc: 23.27%
+  [10300/14990] Current Acc: 23.28%
+  [10350/14990] Current Acc: 23.28%
+  [10400/14990] Current Acc: 23.28%
+  [10450/14990] Current Acc: 23.28%
+  [10500/14990] Current Acc: 23.28%
+  [10550/14990] Current Acc: 23.28%
+  [10600/14990] Current Acc: 23.27%
+  [10650/14990] Current Acc: 23.27%
+  [10700/14990] Current Acc: 23.27%
+  [10750/14990] Current Acc: 23.27%
+  [10800/14990] Current Acc: 23.27%
+  [10850/14990] Current Acc: 23.26%
+  [10900/14990] Current Acc: 23.27%
+  [10950/14990] Current Acc: 23.27%
+  [11000/14990] Current Acc: 23.26%
+  [11050/14990] Current Acc: 23.26%
+  [11100/14990] Current Acc: 23.26%
+  [11150/14990] Current Acc: 23.26%
+  [11200/14990] Current Acc: 23.26%
+  [11250/14990] Current Acc: 23.26%
+  [11300/14990] Current Acc: 23.26%
+  [11350/14990] Current Acc: 23.26%
+  [11400/14990] Current Acc: 23.26%
+  [11450/14990] Current Acc: 23.26%
+  [11500/14990] Current Acc: 23.26%
+  [11550/14990] Current Acc: 23.26%
+  [11600/14990] Current Acc: 23.26%
+  [11650/14990] Current Acc: 23.26%
+  [11700/14990] Current Acc: 23.26%
+  [11750/14990] Current Acc: 23.26%
+  [11800/14990] Current Acc: 23.26%
+  [11850/14990] Current Acc: 23.26%
+  [11900/14990] Current Acc: 23.26%
+  [11950/14990] Current Acc: 23.26%
+  [12000/14990] Current Acc: 23.26%
+  [12050/14990] Current Acc: 23.27%
+  [12100/14990] Current Acc: 23.26%
+  [12150/14990] Current Acc: 23.27%
+  [12200/14990] Current Acc: 23.26%
+  [12250/14990] Current Acc: 23.26%
+  [12300/14990] Current Acc: 23.26%
+  [12350/14990] Current Acc: 23.26%
+  [12400/14990] Current Acc: 23.27%
+  [12450/14990] Current Acc: 23.27%
+  [12500/14990] Current Acc: 23.27%
+  [12550/14990] Current Acc: 23.27%
+  [12600/14990] Current Acc: 23.27%
+  [12650/14990] Current Acc: 23.26%
+  [12700/14990] Current Acc: 23.27%
+  [12750/14990] Current Acc: 23.27%
+  [12800/14990] Current Acc: 23.27%
+  [12850/14990] Current Acc: 23.27%
+  [12900/14990] Current Acc: 23.27%
+  [12950/14990] Current Acc: 23.27%
+  [13000/14990] Current Acc: 23.28%
+  [13050/14990] Current Acc: 23.28%
+  [13100/14990] Current Acc: 23.28%
+  [13150/14990] Current Acc: 23.28%
+  [13200/14990] Current Acc: 23.27%
+  [13250/14990] Current Acc: 23.28%
+  [13300/14990] Current Acc: 23.27%
+  [13350/14990] Current Acc: 23.27%
+  [13400/14990] Current Acc: 23.27%
+  [13450/14990] Current Acc: 23.27%
+  [13500/14990] Current Acc: 23.27%
+  [13550/14990] Current Acc: 23.27%
+  [13600/14990] Current Acc: 23.28%
+  [13650/14990] Current Acc: 23.28%
+  [13700/14990] Current Acc: 23.27%
+  [13750/14990] Current Acc: 23.28%
+  [13800/14990] Current Acc: 23.27%
+  [13850/14990] Current Acc: 23.28%
+  [13900/14990] Current Acc: 23.28%
+  [13950/14990] Current Acc: 23.28%
+  [14000/14990] Current Acc: 23.28%
+  [14050/14990] Current Acc: 23.28%
+  [14100/14990] Current Acc: 23.28%
+  [14150/14990] Current Acc: 23.28%
+  [14200/14990] Current Acc: 23.28%
+  [14250/14990] Current Acc: 23.28%
+  [14300/14990] Current Acc: 23.28%
+  [14350/14990] Current Acc: 23.28%
+  [14400/14990] Current Acc: 23.28%
+  [14450/14990] Current Acc: 23.27%
+  [14500/14990] Current Acc: 23.27%
+  [14550/14990] Current Acc: 23.27%
+  [14600/14990] Current Acc: 23.27%
+  [14650/14990] Current Acc: 23.27%
+  [14700/14990] Current Acc: 23.26%
+  [14750/14990] Current Acc: 23.26%
+  [14800/14990] Current Acc: 23.26%
+  [14850/14990] Current Acc: 23.27%
+  [14900/14990] Current Acc: 23.26%
+  [14950/14990] Current Acc: 23.26%
+
+======================================================================
+TEST SET RESULTS (mask_ratio=0.5)
+======================================================================
+Total masked positions: 11,168,612
+Correct predictions: 2,597,654
+Overall Accuracy: 23.26%
+======================================================================
+
+Per-Bin Accuracy:
+Bin      Accuracy     Count     
+------------------------------
+0         31.19%       883,786
+1         16.97%       871,256
+2          6.88%      1,564,261
+3         11.00%      1,026,475
+4         38.10%      1,499,201
+5         49.64%      2,051,572
+6         13.67%      1,559,937
+7         11.06%      1,041,162
+8          1.64%       378,365
+9         10.05%       292,597
+
+======================================================================
+✓ FINAL TEST ACCURACY: 23.26%
+======================================================================
+

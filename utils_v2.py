@@ -53,7 +53,7 @@ def get_1d_sincos_pos_embed(embed_dim, pos, cls_token=False):
 def adjust_learning_rate(optimizer, epoch, lr, min_lr, max_epochs, warmup_epochs):
     """Decay the learning rate with half-cycle cosine after warmup"""
     if epoch < warmup_epochs:
-        tmp_lr = lr * epoch / warmup_epochs 
+        tmp_lr = min_lr + (lr - min_lr) * (epoch + 1) / warmup_epochs 
     else:
         tmp_lr = min_lr + (lr - min_lr) * 0.5 * \
             (1. + math.cos(math.pi * (epoch - warmup_epochs) / (max_epochs - warmup_epochs)))
@@ -205,36 +205,42 @@ def init_weights(module):
     elif isinstance(module, nn.Embedding):
         nn.init.normal_(module.weight, std=0.1)
 
-def collate_fn_dynamic(batch: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+def collate_fn_fixed_length(batch: List[Dict[str, Any]], fixed_length: int = 120) -> Dict[str, torch.Tensor]:
     """
-    Dynamic collate function for variable-length sequences.
-    Only pads to the maximum length within each batch.
+    Fixed-length collate function (NO dynamic padding).
+    All sequences are padded/truncated to the same fixed length.
+    
+    Args:
+        batch: List of samples
+        fixed_length: Fixed sequence length for ALL batches (default: 80)
+    
+    Returns:
+        Batched tensors with uniform fixed length
     """
-    lens = torch.tensor([item['actual_len'] for item in batch], dtype=torch.long)
-    batch_len: int = int(lens.max().item()) # get max len within batch
-    B: int = len(batch)
-
-    loinc_padded = torch.full((B, batch_len), fill_value=PAD_LOINC_ID, dtype=torch.long)
-    value_padded = torch.full((B, batch_len), fill_value=PAD_VALUE_ID, dtype=torch.long)
-    mask_padded = torch.full((B, batch_len), fill_value=PAD_MASK_VAL, dtype=torch.float32)
+    B = len(batch)
+    
+    loinc_padded = torch.full((B, fixed_length), fill_value=PAD_LOINC_ID, dtype=torch.long)
+    value_padded = torch.full((B, fixed_length), fill_value=PAD_VALUE_ID, dtype=torch.long)
+    mask_padded = torch.full((B, fixed_length), fill_value=PAD_MASK_VAL, dtype=torch.float32)
+    actual_lengths = torch.zeros(B, dtype=torch.long)
 
     for i, item in enumerate(batch):
-        L = int(item['actual_len'])
+        actual_len = int(item['actual_len'])
+        # Cap length at fixed_length
+        L = min(actual_len, fixed_length)
+        actual_lengths[i] = L
+        
         loinc = item['loinc_tokens']
         value = item['value_tokens']
         mask = item['missing_mask']
 
-        loinc = loinc.long()
-        value = value.long()
-        mask = mask.float()
-
-        loinc_padded[i, :L] = loinc[:L]
-        value_padded[i, :L] = value[:L]
-        mask_padded[i, :L] = mask[:L]
+        loinc_padded[i, :L] = loinc[:L].long()
+        value_padded[i, :L] = value[:L].long()
+        mask_padded[i, :L] = mask[:L].float()
 
     return {
         'loinc_tokens': loinc_padded,
         'value_tokens': value_padded,
         'missing_mask': mask_padded,
-        'actual_lengths': lens
+        'actual_lengths': actual_lengths
     }

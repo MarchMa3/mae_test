@@ -18,38 +18,36 @@ from utils_v2 import (
     LabDataset,
     save_checkpoint,
     adjust_learning_rate,
-    collate_fn_dynamic,
+    collate_fn_fixed_length,
 )
 
 # Data utils
 def load_sequences_from_pickle(filepath):
-    print("Loading pickle file...")
+    """Load sequences and return percentiles for fixed-length padding"""
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
 
-    vocab_info = data['vocab_info']
-    vocab_size = int(vocab_info['vocab_size'])
-
+    vocab_size = int(data['vocab_info']['vocab_size'])
     patient_sequences = data['patient_sequences']
-    total_sequences = len(patient_sequences)
-    print(f"File contains {total_sequences} sequences")
-    print(f"Vocab size: {vocab_size}")
 
     all_loinc_tokens, all_value_tokens, all_masks, seq_lengths = [], [], [], []
-    print("Processing sequences...")
-    for i, seq_data in enumerate(patient_sequences.values()):
-        loinc_tokens = seq_data['loinc_tokens']
-        value_tokens = seq_data['value_tokens']
-        mask = seq_data['missing_mask']
-        all_loinc_tokens.append(loinc_tokens)
-        all_value_tokens.append(value_tokens)
-        all_masks.append(mask)
-        seq_lengths.append(len(loinc_tokens))
+    for seq_data in patient_sequences.values():
+        all_loinc_tokens.append(seq_data['loinc_tokens'])
+        all_value_tokens.append(seq_data['value_tokens'])
+        all_masks.append(seq_data['missing_mask'])
+        seq_lengths.append(len(seq_data['loinc_tokens']))
 
     max_seq_len = max(seq_lengths)
-    print(f"\nSequence lengths - Min: {min(seq_lengths)}, Max: {max_seq_len}, Mean: {np.mean(seq_lengths):.1f}")
+    seq_lengths_array = np.array(seq_lengths)
+    
+    # Calculate percentiles
+    percentiles = {
+        'p95': int(np.percentile(seq_lengths_array, 95)),
+        'p99': int(np.percentile(seq_lengths_array, 99)),
+    }
 
-    print("Padding sequences...")
+    # Pad to max length
+    total_sequences = len(all_loinc_tokens)
     padded_loinc = np.zeros((total_sequences, max_seq_len), dtype=np.int64)
     padded_value = np.zeros((total_sequences, max_seq_len), dtype=np.int64)
     padded_masks = np.zeros((total_sequences, max_seq_len), dtype=np.float32)
@@ -60,8 +58,7 @@ def load_sequences_from_pickle(filepath):
         padded_value[i, :L] = value
         padded_masks[i, :L] = mask
 
-    print("✓ Data loading complete!")
-    return padded_loinc, padded_value, padded_masks, max_seq_len, vocab_size
+    return padded_loinc, padded_value, padded_masks, max_seq_len, vocab_size, percentiles
 
 # Train / Val
 def train_one_epoch(model, dataloader, optimizer, scaler, device, epoch, world_size, rank):  
@@ -133,7 +130,7 @@ def validate(model, dataloader, device, world_size):
 # Main (DDP)
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", type=str, default="data/labevents_mimic.pkl")
+    parser.add_argument("--data", type=str, default="data/labevents_mimic_trainval.pkl")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=128)  
     parser.add_argument("--num_workers", type=int, default=8)
@@ -142,10 +139,12 @@ def main():
     parser.add_argument("--lr", type=float, default=2e-4)  
     parser.add_argument("--weight_decay", type=float, default=0.05)
     parser.add_argument("--patience", type=int, default=5)
-    parser.add_argument("--drop_ratio", type=float, default=0.1, help="Dropout ratio for MLP")
-    parser.add_argument("--attn_drop_ratio", type=float, default=0.1, help="Dropout ratio for attention")
-    parser.add_argument("--min_lr", type=float, default=1e-6, help="Minimum learning rate")
-    parser.add_argument("--warmup_epochs", type=int, default=10, help="Number of warmup epochs")
+    parser.add_argument("--drop_ratio", type=float, default=0.1)
+    parser.add_argument("--attn_drop_ratio", type=float, default=0.1)
+    parser.add_argument("--min_lr", type=float, default=1e-6)
+    parser.add_argument("--warmup_epochs", type=int, default=10)
+    parser.add_argument("--fixed_length", type=int, default=120, help="Fixed sequence length for padding")
+    parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
     
     args = parser.parse_args()
 
@@ -157,28 +156,22 @@ def main():
 
     torch.cuda.set_device(local_rank)
     device = torch.device(f"cuda:{local_rank}")
-
     set_seed(42 + rank)
 
     if rank == 0:
-        print(f"DDP world_size={world_size}, local_rank={local_rank}, global_rank={rank}")
-        print("Loading data...")
+        print(f"DDP: world_size={world_size}, rank={rank}")
     
+    # WandB init
     if rank == 0:
         os.environ['WANDB_MODE'] = 'online'
         os.environ['WANDB_DISABLED'] = 'false'
         os.environ['WANDB_API_KEY'] = '6cf65e599a667502406f2f26fd010cf12ac94b99'
         
-        print("\n" + "=" * 60)
-        print("Initializing WandB...")
-        print("=" * 60)
-        
         try:
             wandb.login(key='6cf65e599a667502406f2f26fd010cf12ac94b99', relogin=True, force=True)
-            
             wandb.init(
                 project="mae-mimic",
-                name=f"{args.model_size}_bs{args.batch_size * world_size}_lr{args.lr}",
+                name=f"{args.model_size}_bs{args.batch_size * world_size}_lr{args.lr}_fixlen{args.fixed_length}",
                 config={
                     "model_size": args.model_size,
                     "batch_size_per_gpu": args.batch_size,
@@ -189,37 +182,36 @@ def main():
                     "weight_decay": args.weight_decay,
                     "patience": args.patience,
                     "num_gpus": world_size,
+                    "fixed_length": args.fixed_length,
                 },
                 mode="online",
-                settings=wandb.Settings(
-                    start_method="thread",
-                    _disable_stats=False,
-                    _disable_meta=False
-                )
+                settings=wandb.Settings(start_method="thread", _disable_stats=False, _disable_meta=False)
             )
-            print(f"✓ WandB initialized successfully!")
-            print(f"✓ Project: {wandb.run.project}")
-            print(f"✓ Run name: {wandb.run.name}")
-            print(f"✓ Run URL: {wandb.run.get_url()}")
-            print("=" * 60 + "\n")
+            if rank == 0:
+                print(f"WandB initialized: {wandb.run.get_url()}")
         except Exception as e:
-            print(f"⚠ Warning: Failed to initialize WandB: {e}")
-            print("Training will continue without WandB logging.")
-            print("=" * 60 + "\n")
-            import traceback
-            traceback.print_exc()
+            print(f"WandB init failed: {e}")
 
-    loinc_tokens, value_tokens, missing_mask, seq_len, vocab_size = load_sequences_from_pickle(args.data)
+    # Load data
+    loinc_tokens, value_tokens, missing_mask, max_seq_len, vocab_size, percentiles = load_sequences_from_pickle(args.data)
+    
+    FIXED_LENGTH = args.fixed_length
+    
+    if rank == 0:
+        print(f"\n{'='*60}")
+        print(f"Fixed Length: {FIXED_LENGTH} | Max: {max_seq_len} | 95th: {percentiles['p95']}")
+        print(f"{'='*60}\n")
 
+    # Split data
     n_samples = loinc_tokens.shape[0]
     n_train = int(0.8 * n_samples)
 
     train_dataset = LabDataset(loinc_tokens[:n_train], value_tokens[:n_train], missing_mask[:n_train])
-    val_dataset   = LabDataset(loinc_tokens[n_train:], value_tokens[n_train:], missing_mask[n_train:])
+    val_dataset = LabDataset(loinc_tokens[n_train:], value_tokens[n_train:], missing_mask[n_train:])
 
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False)
-    val_sampler   = DistributedSampler(val_dataset,   num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
-
+    val_sampler = DistributedSampler(val_dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -227,7 +219,7 @@ def main():
         sampler=train_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
-        collate_fn=collate_fn_dynamic,
+        collate_fn=lambda batch: collate_fn_fixed_length(batch, fixed_length=FIXED_LENGTH),
         drop_last=False,
     )
     val_loader = DataLoader(
@@ -237,45 +229,45 @@ def main():
         sampler=val_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
-        collate_fn=collate_fn_dynamic,
+        collate_fn=lambda batch: collate_fn_fixed_length(batch, fixed_length=FIXED_LENGTH),
         drop_last=False,
     )
 
     # Model
     if args.model_size == "small":
         model = mae_small(
-            seq_len=seq_len,
+            seq_len=FIXED_LENGTH,
             vocab_size=vocab_size,
             num_bins=10,
-            input_dim=256,
+            input_dim=64,
             use_cls_token=True,
             mask_ratio=args.mask_ratio,
-            drop_ratio=args.drop_ratio,          
-            attn_drop_ratio=args.attn_drop_ratio, 
+            drop_ratio=args.drop_ratio,
+            attn_drop_ratio=args.attn_drop_ratio,
             exclude_columns=[0]
         )
     elif args.model_size == "base":
         model = mae_base(
-            seq_len=seq_len,
+            seq_len=FIXED_LENGTH,
             vocab_size=vocab_size,
             num_bins=10,
-            input_dim=256,
+            input_dim=128,
             use_cls_token=True,
             mask_ratio=args.mask_ratio,
-            drop_ratio=args.drop_ratio,          
-            attn_drop_ratio=args.attn_drop_ratio, 
+            drop_ratio=args.drop_ratio,
+            attn_drop_ratio=args.attn_drop_ratio,
             exclude_columns=[0]
         )
     else:
         model = mae_large(
-            seq_len=seq_len,
+            seq_len=FIXED_LENGTH,
             vocab_size=vocab_size,
             num_bins=10,
             input_dim=256,
             use_cls_token=True,
             mask_ratio=args.mask_ratio,
-            drop_ratio=args.drop_ratio,          
-            attn_drop_ratio=args.attn_drop_ratio, 
+            drop_ratio=args.drop_ratio,
+            attn_drop_ratio=args.attn_drop_ratio,
             exclude_columns=[0]
         )
 
@@ -286,22 +278,36 @@ def main():
         count_parameters(model)
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scaler = GradScaler()  
+    scaler = GradScaler()
 
+    start_epoch = 1
     best_val_loss = float("inf")
     patience_counter = 0
+    
+    if args.resume:
+        if rank == 0:
+            print(f"\n{'='*60}")
+            print(f"Loading checkpoint from: {args.resume}")
+            print(f"{'='*60}\n")
+        
+        checkpoint = torch.load(args.resume, map_location=device)
+        model.module.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        best_val_loss = checkpoint.get('val_loss', float("inf"))
+        
+        if rank == 0:
+            print(f"✓ Resumed from epoch {checkpoint['epoch']}")
+            print(f"✓ Best val loss so far: {best_val_loss:.4f}")
+            print(f"✓ Starting from epoch {start_epoch}\n")
 
     if rank == 0:
-        print("\n" + "=" * 60)
-        print("TRAINING START (DDP + Mixed Precision)")
-        print("=" * 60)
-        print(f"epochs={args.epochs}, batch_size_per_gpu={args.batch_size}, num_workers={args.num_workers}")
-        print(f"Total batch size: {args.batch_size * world_size}")
+        print(f"\nTraining starts: epochs={args.epochs}, batch_size={args.batch_size * world_size}\n")
 
     for epoch in range(1, args.epochs + 1):
         train_sampler.set_epoch(epoch)
 
-        adjust_learning_rate(optimizer, epoch-1, lr=args.lr, min_lr=args.lr*0.1,
+        adjust_learning_rate(optimizer, epoch-1, lr=args.lr, min_lr=args.min_lr,
                              max_epochs=args.epochs, warmup_epochs=args.warmup_epochs)
 
         train_loss = train_one_epoch(model, train_loader, optimizer, scaler, device, epoch, world_size, rank)
@@ -313,13 +319,13 @@ def main():
                 "epoch/val_loss": val_loss,
                 "epoch/epoch": epoch,
             })
-            print(f"\nEpoch [{epoch}/{args.epochs}]  Train Loss: {train_loss:.4f}  Val Loss: {val_loss:.4f}")
+            print(f"Epoch [{epoch}/{args.epochs}]  Train: {train_loss:.4f}  Val: {val_loss:.4f}")
 
             is_best = val_loss < best_val_loss
             if is_best:
                 best_val_loss = val_loss
                 patience_counter = 0
-                print("  ✓ New best validation loss!")
+                print("  ✓ New best!")
             else:
                 patience_counter += 1
                 print(f"  No improvement ({patience_counter}/{args.patience})")
@@ -331,7 +337,7 @@ def main():
                 'optimizer_state_dict': optimizer.state_dict(),
                 'train_loss': train_loss,
                 'val_loss': val_loss,
-                'seq_len': seq_len,
+                'seq_len': FIXED_LENGTH,
                 'vocab_size': vocab_size,
             }, f'checkpoints_mimic/epoch_{epoch}.pth', is_best=is_best)
 
@@ -339,19 +345,16 @@ def main():
         dist.broadcast(stop_t, src=0)
         if int(stop_t.item()) == 1:
             if rank == 0:
-                print(f"\nEarly stopping triggered after {epoch} epochs")
+                print(f"\nEarly stopping at epoch {epoch}")
             break
 
     if rank == 0:
-        print("\n" + "=" * 60)
-        print("TRAINING COMPLETE")
-        print("=" * 60)
-        print(f"Best validation loss: {best_val_loss:.4f}")
-
+        print(f"\nTraining complete! Best val loss: {best_val_loss:.4f}")
         wandb.finish()
 
     dist.barrier()
     dist.destroy_process_group()
+
 
 if __name__ == "__main__":
     main()

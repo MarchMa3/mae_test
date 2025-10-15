@@ -18,19 +18,20 @@ mkdir -p checkpoints_mimic
 LOG_FILE="log/train/train_mimic_$(date +%Y%m%d_%H%M%S).log"
 
 torchrun --nproc_per_node=3 --master_port=29501 train_v2.py \
-    --data data/labevents_mimic.pkl \
+    --data data/labevents_mimic_trainval.pkl \
     --model_size small \
     --batch_size 128 \
-    --epochs 100 \
-    --lr 5e-4 \
-    --min_lr 5e-6 \
-    --warmup_epochs 15 \
+    --epochs 50 \
+    --lr 1e-3 \
+    --min_lr 1e-5 \
+    --warmup_epochs 5 \
     --num_workers 8 \
     --weight_decay 0.05 \
     --patience 20 \
     --mask_ratio 0.5 \
     --drop_ratio 0.1 \
     --attn_drop_ratio 0.1 \
+    --fixed_length 120 \
     2>&1 | tee "$LOG_FILE"
 
 exit ${PIPESTATUS[0]}

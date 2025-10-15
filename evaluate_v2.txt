@@ -1,0 +1,20 @@
+Loading test data...
+Test set: 959,297 sequences
+
+
+Epoch 10:
+Accuracy: 22.72%
+
+Epoch 20:
+Accuracy: 23.00%
+
+Epoch 30:
+Accuracy: 22.70%
+
+Epoch 40:
+Accuracy: 23.09%
+
+Epoch 50:
+Accuracy: 23.26%
+
+✓ Plot saved: test_accuracy_curve.png
